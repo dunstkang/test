@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f6f6b">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>留言板</title>
+<style>
+  :root {
+    --bg: #f3f6f5; --surface: #ffffff; --ink: #1c2b2a; --muted: #6b7f7d;
+    --line: #d5e0de; --accent: #1f6f6b; --accent-ink: #ffffff; --err: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101a19; --surface: #182524; --ink: #e4eeed; --muted: #8aa09e;
+      --line: #2a3e3c; --accent: #4fb3ac; --accent-ink: #0b1514; --err: #f2b8b5;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 48px; }
+  h1 { font-size: 1.3rem; margin: 8px 0 16px; }
+  form {
+    display: grid; grid-template-columns: 9rem 1fr auto; gap: 8px;
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: 10px; padding: 12px;
+  }
+  input, button {
+    font: inherit; padding: 10px 12px; border-radius: 6px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+    min-width: 0;
+  }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button {
+    background: var(--accent); color: var(--accent-ink);
+    border-color: var(--accent); font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: .6; cursor: default; }
+  @media (max-width: 520px) {
+    form { grid-template-columns: 1fr; }
+  }
+  #status { min-height: 1.5em; margin: 8px 2px; font-size: .9rem; color: var(--muted); }
+  #status.err { color: var(--err); }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li {
+    display: flex; gap: 12px; padding: 10px 4px;
+    border-bottom: 1px solid var(--line); word-break: break-word;
+  }
+  .uid { flex: none; min-width: 5rem; font-weight: 700; color: var(--accent); }
+  .empty { color: var(--muted); padding: 16px 4px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>留言板</h1>
+  <form id="form" autocomplete="off">
+    <input id="uid" placeholder="id" required>
+    <input id="txt" placeholder="一串字" required>
+    <button id="send" type="submit">送出</button>
+  </form>
+  <div id="status" role="status"></div>
+  <ul id="list"></ul>
+</main>
+
+<script>
+// ★ 改成你的 Apps Script 部署網址（/exec 結尾）
+const API = 'https://script.google.com/macros/s/AKfycbxzWDN-M2UmS2TzT0jD6Bd7uA4RpbNq-XeYrXWtVudMhBtZUSVJHlmGpi_fahbEEiHWzQ/exec';
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function setStatus(msg, isErr) {
+  $('status').textContent = msg || '';
+  $('status').className = isErr ? 'err' : '';
+}
+
+async function load() {
+  try {
+    const rows = await (await fetch(API)).json();
+    if (!Array.isArray(rows)) throw new Error('bad response');
+    $('list').innerHTML = rows.length
+      ? rows.slice().reverse().map(r =>
+          `<li><span class="uid">${esc(r.id)}</span><span>${esc(r.text)}</span></li>`).join('')
+      : '<li class="empty">還沒有資料，輸入第一筆吧。</li>';
+  } catch (e) {
+    setStatus('讀取失敗，請檢查網路或部署網址', true);
+  }
+}
+
+$('form').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const id = $('uid').value.trim(), text = $('txt').value.trim();
+  if (!id || !text) return;
+  $('send').disabled = true;
+  setStatus('送出中…');
+  try {
+    await fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },   // 避免 CORS preflight
+      body: JSON.stringify({ id, text })
+    });
+    $('txt').value = '';
+    $('txt').focus();
+    setStatus('已送出');
+    await load();
+  } catch (e) {
+    setStatus('送出失敗，資料未寫入', true);
+  } finally {
+    $('send').disabled = false;
+  }
+});
+
+load();
+setInterval(load, 5000);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
