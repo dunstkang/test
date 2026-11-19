@@ -1,5 +1,5 @@
 // 改了檔案後，把版本號 +1，舊快取才會被清掉
-const CACHE = 'v3';
+const CACHE = 'v4';
 const FILES = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {

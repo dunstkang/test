@@ -44,6 +44,7 @@
   }
   button:disabled { opacity: .6; cursor: default; }
   #hint { grid-column: 2; margin: -4px 0 2px; font-size: .85rem; color: var(--muted); min-height: 1.3em; }
+  #pwnote { grid-column: 2; margin: -4px 0 2px; font-size: .85rem; color: var(--muted); }
   #status { min-height: 1.5em; margin: 8px 2px; font-size: .9rem; color: var(--muted); }
   #status.err { color: var(--err); }
   ul { list-style: none; margin: 0; padding: 0; }
@@ -53,7 +54,7 @@
   @media (max-width: 420px) {
     form { grid-template-columns: 1fr; }
     label { text-align: left; }
-    button, #hint { grid-column: 1; }
+    button, #hint, #pwnote { grid-column: 1; }
   }
 </style>
 </head>
@@ -70,6 +71,7 @@
 
     <label for="pw">passwd:</label>
     <input id="pw" type="password" placeholder="留空 = 不使用密碼" autocomplete="new-password">
+    <div id="pwnote">如果你沒密碼，那就一直不用密碼，一直到你第一次給密碼，那就是你的密碼。忘記了，請跟管理者說。</div>
 
     <label for="txt">text:</label>
     <input id="txt" placeholder="一串字" required maxlength="500">
