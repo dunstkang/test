@@ -20,71 +20,62 @@
     }
   }
   * { box-sizing: border-box; }
-  [hidden] { display: none !important; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font: 16px/1.5 "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
   }
   main { max-width: 720px; margin: 0 auto; padding: 20px 16px 48px; }
   h1 { font-size: 1.3rem; margin: 8px 0 16px; }
-  .card {
+  form {
+    display: grid; grid-template-columns: 4.5rem 1fr; gap: 8px 10px; align-items: center;
     background: var(--surface); border: 1px solid var(--line);
-    border-radius: 10px; padding: 12px;
+    border-radius: 10px; padding: 14px;
   }
+  label { font-weight: 600; text-align: right; }
   input, button {
     font: inherit; padding: 10px 12px; border-radius: 6px;
     border: 1px solid var(--line); background: var(--bg); color: var(--ink);
-    min-width: 0;
+    min-width: 0; width: 100%;
   }
   input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  button { cursor: pointer; }
-  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+  button {
+    grid-column: 2; background: var(--accent); color: var(--accent-ink);
+    border-color: var(--accent); font-weight: 600; cursor: pointer;
+  }
   button:disabled { opacity: .6; cursor: default; }
-  #authForm { display: grid; gap: 8px; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 4px; }
-  .tabs button { flex: 1; }
-  .tabs button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
-  #bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--muted); }
-  #bar b { color: var(--ink); }
-  #bar button { padding: 4px 10px; font-size: .9rem; }
-  #postForm { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+  #hint { grid-column: 2; margin: -4px 0 2px; font-size: .85rem; color: var(--muted); min-height: 1.3em; }
   #status { min-height: 1.5em; margin: 8px 2px; font-size: .9rem; color: var(--muted); }
   #status.err { color: var(--err); }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--line); word-break: break-word; }
   .uid { flex: none; min-width: 5rem; font-weight: 700; color: var(--accent); }
   .empty { color: var(--muted); padding: 16px 4px; }
+  @media (max-width: 420px) {
+    form { grid-template-columns: 1fr; }
+    label { text-align: left; }
+    button, #hint { grid-column: 1; }
+  }
 </style>
 </head>
 <body>
 <main>
   <h1>留言板</h1>
 
-  <!-- 登入 / 註冊 -->
-  <section id="authView" class="card" hidden>
-    <div class="tabs">
-      <button type="button" id="tabLogin" class="on">登入</button>
-      <button type="button" id="tabReg">註冊</button>
-    </div>
-    <form id="authForm">
-      <input id="acc" placeholder="帳號" required autocomplete="username">
-      <input id="pw" type="password" placeholder="密碼（至少 6 個字元）" required autocomplete="current-password">
-      <input id="inv" placeholder="邀請碼（沒有的話免填）" hidden>
-      <button class="primary" id="authBtn" type="submit">登入</button>
-    </form>
-  </section>
+  <form id="form" autocomplete="off">
+    <label for="uid">id:</label>
+    <input id="uid" list="ids" placeholder="選擇或輸入 id（沒看過的 id 會自動註冊）" required maxlength="20">
+    <datalist id="ids"></datalist>
 
-  <!-- 留言 -->
-  <section id="appView" hidden>
-    <div id="bar">
-      <span>帳號：<b id="meName"></b></span>
-      <button type="button" id="logout">登出</button>
-    </div>
-    <form id="postForm" class="card" autocomplete="off">
-      <input id="txt" placeholder="一串字" required maxlength="500">
-      <button class="primary" id="send" type="submit">送出</button>
-    </form>
-  </section>
+    <div id="hint"></div>
+
+    <label for="pw">passwd:</label>
+    <input id="pw" type="password" placeholder="留空 = 不使用密碼" autocomplete="new-password">
+
+    <label for="txt">text:</label>
+    <input id="txt" placeholder="一串字" required maxlength="500">
+
+    <button id="send" type="submit">送出</button>
+  </form>
 
   <div id="status" role="status"></div>
   <ul id="list"></ul>
@@ -93,17 +84,23 @@
 <script>
 // ★ 改成你的 Apps Script 部署網址（/exec 結尾）
 const API = 'https://script.google.com/macros/s/AKfycbxzWDN-M2UmS2TzT0jD6Bd7uA4RpbNq-XeYrXWtVudMhBtZUSVJHlmGpi_fahbEEiHWzQ/exec';
+const NEED_VERSION = 3;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
-let token = '', me = '', mode = 'login', timer = null;
-try { token = localStorage.getItem('token') || ''; me = localStorage.getItem('me') || ''; } catch (e) {}
+let known = new Map();   // id（小寫）→ 是否已設定密碼
 
 function setStatus(msg, isErr) {
   $('status').textContent = msg || '';
   $('status').className = isErr ? 'err' : '';
+}
+
+function errText(e) {
+  if (e.message === 'old-backend') return '後端還是舊版，請到 Apps Script 重新部署「新版本」';
+  if (e.message === 'bad-json') return '後端回應異常，請確認 Apps Script 已部署，且「誰可以存取」為「所有人」';
+  return '連線失敗，請檢查網路或部署網址';
 }
 
 async function call(payload) {
@@ -112,114 +109,73 @@ async function call(payload) {
     headers: { 'Content-Type': 'text/plain' },   // 避免 CORS preflight
     body: JSON.stringify(payload)
   });
-  return res.json();
+  let data;
+  try { data = JSON.parse(await res.text()); } catch (e) { throw new Error('bad-json'); }
+  if (!data || !(data.v >= NEED_VERSION)) throw new Error('old-backend');
+  return data;
 }
 
-// ---- 畫面切換 ----
-function showView() {
-  const loggedIn = !!token;
-  $('authView').hidden = loggedIn;
-  $('appView').hidden = !loggedIn;
-  clearInterval(timer);
-  if (loggedIn) {
-    $('meName').textContent = me;
-    load();
-    timer = setInterval(load, 5000);
-  } else {
-    $('list').innerHTML = '';
+// ---- 依輸入的 id 顯示提示 ----
+function updateHint() {
+  const id = $('uid').value.trim();
+  let msg = '';
+  if (id) {
+    const k = id.toLowerCase();
+    if (!known.has(k)) msg = '新的 id，送出後會自動註冊。密碼可留空（不使用密碼）。';
+    else if (known.get(k)) msg = '這個 id 已設定密碼，請輸入密碼。';
+    else msg = '這個 id 還沒有密碼：留空即可；若填入密碼，從此就固定使用該密碼。';
   }
+  $('hint').textContent = msg;
 }
-
-function setMode(m) {
-  mode = m;
-  $('tabLogin').className = m === 'login' ? 'on' : '';
-  $('tabReg').className = m === 'reg' ? 'on' : '';
-  $('authBtn').textContent = m === 'login' ? '登入' : '註冊';
-  $('inv').hidden = m !== 'reg';
-  $('pw').autocomplete = m === 'login' ? 'current-password' : 'new-password';
-  setStatus('');
-}
-
-function clearLogin(msg) {
-  token = ''; me = '';
-  try { localStorage.removeItem('token'); localStorage.removeItem('me'); } catch (e) {}
-  showView();
-  setStatus(msg || '', !!msg);
-}
+$('uid').addEventListener('input', updateHint);
 
 // ---- 讀取 ----
 async function load() {
-  if (!token) return;
   try {
-    const r = await call({ action: 'list', token });
-    if (r.error === 'unauthorized') return clearLogin('登入已過期，請重新登入');
-    if (!Array.isArray(r.rows)) throw new Error('bad response');
+    const r = await call({ action: 'list' });
+    if (!Array.isArray(r.rows)) throw new Error('bad-json');
     $('list').innerHTML = r.rows.length
       ? r.rows.slice().reverse().map(x =>
           `<li><span class="uid">${esc(x.id)}</span><span>${esc(x.text)}</span></li>`).join('')
       : '<li class="empty">還沒有資料，輸入第一筆吧。</li>';
+    known = new Map((r.users || []).map(u => [u.id.toLowerCase(), u.locked]));
+    $('ids').innerHTML = (r.users || []).map(u =>
+      `<option value="${esc(u.id)}">${u.locked ? '🔒' : ''}</option>`).join('');
+    updateHint();
   } catch (e) {
-    setStatus('讀取失敗，請檢查網路或部署網址', true);
+    setStatus(errText(e), true);
   }
 }
 
-// ---- 登入 / 註冊 ----
-$('tabLogin').onclick = () => setMode('login');
-$('tabReg').onclick = () => setMode('reg');
-
-$('authForm').addEventListener('submit', async ev => {
+// ---- 送出 ----
+$('form').addEventListener('submit', async ev => {
   ev.preventDefault();
-  $('authBtn').disabled = true;
-  setStatus(mode === 'login' ? '登入中…' : '註冊中…');
-  try {
-    const r = await call({
-      action: mode === 'login' ? 'login' : 'register',
-      account: $('acc').value.trim(),
-      password: $('pw').value,
-      invite: $('inv').value.trim()
-    });
-    if (r.error) { setStatus(r.error, true); return; }
-    token = r.token; me = r.account;
-    try { localStorage.setItem('token', token); localStorage.setItem('me', me); } catch (e) {}
-    $('pw').value = '';
-    setStatus('');
-    showView();
-  } catch (e) {
-    setStatus('連線失敗，請檢查網路', true);
-  } finally {
-    $('authBtn').disabled = false;
-  }
-});
-
-$('logout').onclick = async () => {
-  const t = token;
-  clearLogin('');
-  try { await call({ action: 'logout', token: t }); } catch (e) {}
-};
-
-// ---- 送出留言 ----
-$('postForm').addEventListener('submit', async ev => {
-  ev.preventDefault();
-  const text = $('txt').value.trim();
-  if (!text) return;
+  const id = $('uid').value.trim(), text = $('txt').value.trim();
+  if (!id || !text) return;
   $('send').disabled = true;
   setStatus('送出中…');
   try {
-    const r = await call({ action: 'add', token, text });
-    if (r.error === 'unauthorized') return clearLogin('登入已過期，請重新登入');
+    const r = await call({ action: 'add', id, password: $('pw').value, text });
     if (r.error) { setStatus(r.error, true); return; }
+    try { localStorage.setItem('lastId', id); } catch (e) {}
     $('txt').value = '';
     $('txt').focus();
-    setStatus('已送出');
+    setStatus(r.created ? '已建立新 id 並送出' : r.pwSet ? '已為這個 id 設定密碼並送出' : '已送出');
     await load();
   } catch (e) {
-    setStatus('送出失敗，資料未寫入', true);
+    setStatus(errText(e), true);
   } finally {
     $('send').disabled = false;
   }
 });
 
-showView();
+try {
+  localStorage.removeItem('token'); localStorage.removeItem('me');   // 清掉上一版留下的資料
+  $('uid').value = localStorage.getItem('lastId') || '';
+} catch (e) {}
+updateHint();
+load();
+setInterval(load, 5000);
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');
 </script>
 </body>
